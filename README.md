@@ -1,9 +1,15 @@
 # SAST_Automation
 sast with llm verification
 
-일단 evidence는 뺴고했음
+일단 evidence는 빼고했음
 main.py -> sast_runner -> sarif_normalization -> llm_verifier
- 
+
+python3.12.3(너무 구버전만 아니면 상관없음), nodejs 24.12.0 
+codex 설치 후 연결
+`npm i -g @openai/codex-sdk` `npm i -g tsx typescript` 설치
+
+생각보다 탐지가 잘 안되는거 같기도? 왜지
+직접할떈 하나 잡고 계속 집요하게 물어봐서 잘 나온건가?
 
 * TODO
 1. 정탐 탐지율 높여야됨 -> 생각보다 탐지가 잘 안되는거 같기도?
