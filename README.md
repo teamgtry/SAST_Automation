@@ -1,4 +1,4 @@
-# SAST_Automaion
+# SAST_Automation
 sast with llm verification
 
 
@@ -7,3 +7,10 @@ sast with llm verification
    1) 프롬프트 손질하기
    2) 같은 케이스를 여러번 검토하게 하기 -> 토큰 소모량 UP
    3) 케이스별로 하나씩 검토하는 것 말고 전체적으로 체이닝되는 것도 확인해달라 하기
+2. 현재 사용 방법은 대상 프로젝트 폴더 내부에 SAST_Automation을 git clone해서 받아오고 main.py를 실행하는 것임 -> 폴더 내부에 넣지말고 외부에서 argument로 제어할 수 있게 해야 여러개를 동시에 돌릴떄 편할듯
+3. runner(semgrep), llm_verification(gemini)추가
+4. report 현재 json형태임 -> 보기 쉽게 시각적으로 가공해서 보여주기
+5. 도커 이미지로 올려버리면 편할듯? 지금 종속성 문제가 조금 있음
+   python, node 2025.12 기준 최신버전
+   `npm i @openai/codex-sdk` `npm i -D tsx typescript` 설치 필요 -> g옵션 안붙이면 할떄마다 다운해야 'npm i -g @openai/codex-sdk' 'npm i -g tsx typescript' 
+7. 대시보드 
