@@ -3,9 +3,9 @@ sast with llm verification
 
 
 * TODO
-1. 정탐 탐지율 높여야됨
+1. 정탐 탐지율 높여야됨 -> 생각보다 탐지가 잘 안되는거 같기도?
    1) 프롬프트 손질하기
-   2) 같은 케이스를 여러번 검토하게 하기 -> 토큰 소모량 UP
+   2) 같은 케이스를 여러번 검토하게 하기
    3) 케이스별로 하나씩 검토하는 것 말고 전체적으로 체이닝되는 것도 확인해달라 하기
 2. 현재 사용 방법은 대상 프로젝트 폴더 내부에 SAST_Automation을 git clone해서 받아오고 main.py를 실행하는 것임 -> 폴더 내부에 넣지말고 외부에서 argument로 제어할 수 있게 해야 여러개를 동시에 돌릴떄 편할듯
 4. runner(semgrep), llm_verification(gemini)추가
