@@ -27,14 +27,14 @@ const properties = {
   recommended_fix: { type: "string" },
   poc: { type: "string" },
 
-  // ✅ optional로 두면 스키마 검증에서 걸리니까, 그냥 항상 넣게 만들자(빈 문자열 가능)
+  //optional로 두면 스키마 검증에서 걸리니까, 그냥 항상 넣게 만들자(빈 문자열 가능)
   notes: { type: "string" },
 } as const;
 
 const outputSchema = {
   type: "object",
   properties,
-  required: Object.keys(properties), // ✅ 여기!
+  required: Object.keys(properties), /
   additionalProperties: false,
 } as const;
 
