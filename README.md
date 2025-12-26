@@ -10,7 +10,7 @@ codex 설치 후 연결
 
 `npm i -g @openai/codex-sdk` `npm i -g tsx typescript` 설치
 
-프로젝트 폴더 내부에 git clone해서 받아아고 python3 main.py로 실행
+프로젝트 폴더 내부에 git clone해서 받고 python3 main.py로 실행
 
 생각보다 탐지가 잘 안되는거 같기도? 왜지
 직접할떈 하나 잡고 계속 집요하게 물어봐서 잘 나온건가?
