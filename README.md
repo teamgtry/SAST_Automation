@@ -23,7 +23,7 @@ codex 설치 후 연결
 2. 현재 사용 방법은 대상 프로젝트 폴더 내부에 SAST_Automation을 git clone해서 받아오고 main.py를 실행하는 것임 -> 폴더 내부에 넣지말고 외부에서 argument로 제어할 수 있게 해야 여러개를 동시에 돌릴때 편할듯
 4. runner(semgrep), llm_verification(gemini)추가
 5. report 현재 json형태 -> 가독성 좋은걸로 바꿀까?
-6. 도커 이미지로 올려버리면 편할듯? 지금 종속성 문제가 조금 있음
+6. 도커 이미지로 올려버리면 편할듯? 지금 종속성 문제가 조금 있음 -> 그럼 codex 로그인은 어떻게?
    python, node 2025.12 기준 최신버전
    `npm i @openai/codex-sdk` `npm i -D tsx typescript` 설치 필요 -> g옵션 안붙이면 할떄마다 다운해야 하니 g옵션 붙여서 설치하자...`npm i -g @openai/codex-sdk` `npm i -g tsx typescript` 
 7. 대시보드 
