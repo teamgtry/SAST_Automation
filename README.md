@@ -1,6 +1,9 @@
 # SAST_Automation
 sast with llm verification
 
+일단 evidence는 뺴고했음
+main.py -> sast_runner -> sarif_normalization -> llm_verifier
+ 
 
 * TODO
 1. 정탐 탐지율 높여야됨 -> 생각보다 탐지가 잘 안되는거 같기도?
