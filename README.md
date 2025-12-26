@@ -5,7 +5,9 @@ sast with llm verification
 main.py -> sast_runner -> sarif_normalization -> llm_verifier
 
 python3.12.3(너무 구버전만 아니면 상관없음), nodejs 24.12.0 
+
 codex 설치 후 연결
+
 `npm i -g @openai/codex-sdk` `npm i -g tsx typescript` 설치
 
 생각보다 탐지가 잘 안되는거 같기도? 왜지
