@@ -174,7 +174,7 @@ def run_llm_verifier(run_dir: Path, run_name: str, threads: int) -> int:
 
     thread_count = max(1, threads)
     cmd = [
-        "npx",
+        "npx.cmd",
         "ts-node",
         "--transpile-only",
         str(script_path),
