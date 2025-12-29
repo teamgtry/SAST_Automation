@@ -2,7 +2,7 @@ from typing import Any, List, Optional
 import logging
 
 # Import from local modules
-from .types import NormalizedIssue
+from .sarif_types import NormalizedIssue
 from .rule_join import find_rule_by_id
 from .extractors import extract_primary_location, extract_related_locations
 
