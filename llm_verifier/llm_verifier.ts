@@ -34,7 +34,7 @@ const properties = {
 const outputSchema = {
   type: "object",
   properties,
-  required: Object.keys(properties), /
+  required: Object.keys(properties), 
   additionalProperties: false,
 } as const;
 
