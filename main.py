@@ -162,7 +162,7 @@ def run_llm_verifier(run_dir: Path, run_name: str, threads: int) -> int:
     project_root = Path(__file__).resolve().parent
     repo_root = project_root.parent
     script_path = project_root / "llm_verifier" / "llm_verifier.ts"
-    issues_path = run_dir / f"{run_name}.json"
+    issues_path = run_dir / f"{run_name}.sanitized.json"
 
     if not script_path.exists():
         print(f"llm_verifier script not found at {script_path}")
@@ -174,7 +174,7 @@ def run_llm_verifier(run_dir: Path, run_name: str, threads: int) -> int:
 
     thread_count = max(1, threads)
     cmd = [
-        "npx.cmd",
+        "npx",
         "ts-node",
         "--transpile-only",
         str(script_path),

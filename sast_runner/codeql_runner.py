@@ -194,6 +194,7 @@ def main() -> None:
         suite,
         f"--format=sarif-latest",
         f"--output={sarif_path}",
+        "--ram=8192",
         "--rerun",
     ]
     print("Running CodeQL analysis...")
