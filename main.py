@@ -5,14 +5,16 @@ Top-level CLI to choose a SAST runner and execute it with basic arguments.
 Flow:
 1) Prompt user to select runner (codeql or semgrep).
 2) Prompt for language.
-3) Prompt for LLM verifier thread count.
-4) Create an output directory at ../<oss>-<runner>-<lang>-<index>.
-5) Invoke the chosen runner script, passing the language (and SARIF/DB paths where known).
-6) Normalize SARIF into JSON and run the LLM verifier (llm_verifier.ts).
+3) Prompt for runner-specific options (CodeQL suite or Semgrep configs/target/resources).
+4) Prompt for LLM verifier thread count.
+5) Create an output directory at ../<oss>-<runner>-<lang>-<index>.
+6) Invoke the chosen runner script, passing the language (and SARIF/DB paths where known).
+7) Normalize SARIF into JSON and run the LLM verifier (llm_verifier.ts).
 """
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +48,40 @@ def prompt_codeql_suite(language: str) -> str | None:
     return raw or None
 
 
+def prompt_semgrep_configs() -> list[str]:
+    """Prompt for one or more Semgrep configs (rulesets)."""
+    while True:
+        raw = input(
+            "Semgrep config(s) (space/comma separated, required): "
+        ).strip()
+        configs = [part for part in raw.replace(",", " ").split() if part]
+        if configs:
+            return configs
+        print("At least one Semgrep config is required.")
+
+
+def prompt_semgrep_target(default_target: Path) -> Path:
+    prompt = f"Semgrep target path (default {default_target}): "
+    raw = input(prompt).strip()
+    chosen = Path(raw) if raw else default_target
+    return chosen.expanduser().resolve()
+
+
+def prompt_optional_int(prompt: str, allow_zero: bool = True) -> int | None:
+    while True:
+        raw = input(prompt).strip()
+        if raw == "":
+            return None
+        try:
+            value = int(raw)
+        except ValueError:
+            print("Please enter an integer (or leave blank for default).")
+            continue
+        if value > 0 or (allow_zero and value >= 0):
+            return value
+        print("Please enter a non-negative integer." if allow_zero else "Please enter a positive integer.")
+
+
 def prompt_threads() -> int:
     while True:
         raw = input("Threads for LLM verifier (default 1): ").strip()
@@ -58,6 +94,24 @@ def prompt_threads() -> int:
         except ValueError:
             pass
         print("Please enter a positive integer for threads.")
+
+
+def is_wsl() -> bool:
+    """Detect if running under WSL to avoid using Windows shims like npx.cmd."""
+    try:
+        return "microsoft" in platform.release().lower()
+    except Exception:
+        return False
+
+
+def resolve_npx_binary() -> str:
+    """
+    Prefer the native npx for the current OS.
+    On Windows -> npx.cmd, otherwise -> npx.
+    """
+    if os.name == "nt" and not is_wsl():
+        return "npx.cmd"
+    return "npx"
 
 
 def allocate_run_dir(oss: str, runner: str, language: str) -> tuple[Path, str, int]:
@@ -104,24 +158,51 @@ def run_codeql(
     return result.returncode
 
 
-def run_semgrep(language: str, run_dir: Path, run_name: str) -> int:
-    runner_path = Path("sast_runner") / "semgrep_runner.py"
+def run_semgrep(
+    configs: list[str],
+    target: Path,
+    run_dir: Path,
+    run_name: str,
+    jobs: int | None = None,
+    timeout: int | None = None,
+    timeout_threshold: int | None = None,
+    max_target_bytes: int | None = None,
+) -> int:
+    runner_path = (Path("sast_runner") / "semgrep_runner.py").resolve()
     if not runner_path.exists():
         print(f"semgrep runner not found at {runner_path}")
         return 1
 
     sarif_path = run_dir / f"{run_name}.sarif"
+    runner_default_sarif = run_dir / "out" / "semgrep.sarif"
 
-    # Only pass language; extend to add output flags when semgrep runner supports them.
-    cmd = [
-        sys.executable,
-        str(runner_path),
-        "--language",
-        language,
-    ]
-    print(f"Running Semgrep: {' '.join(cmd)}")
-    print(f"(Expected SARIF destination: {sarif_path})")
-    result = subprocess.run(cmd)
+    cmd = [sys.executable, str(runner_path)]
+    for config in configs:
+        cmd.extend(["--config", config])
+    cmd.extend(["--target", str(target)])
+    if jobs is not None:
+        cmd.extend(["--jobs", str(jobs)])
+    if timeout is not None:
+        cmd.extend(["--timeout", str(timeout)])
+    if timeout_threshold is not None:
+        cmd.extend(["--timeout-threshold", str(timeout_threshold)])
+    if max_target_bytes is not None:
+        cmd.extend(["--max-target-bytes", str(max_target_bytes)])
+
+    print(f"Running Semgrep: {' '.join(cmd)} (cwd={run_dir})")
+    result = subprocess.run(cmd, cwd=run_dir)
+    if result.returncode != 0:
+        return result.returncode
+
+    if runner_default_sarif.exists():
+        try:
+            runner_default_sarif.replace(sarif_path)
+        except OSError as exc:  # pragma: no cover - simple filesystem failure path
+            print(f"Failed to move SARIF file: {exc}", file=sys.stderr)
+            return 1
+        print(f"SARIF saved to: {sarif_path}")
+    else:
+        print(f"SARIF file not found at expected location: {runner_default_sarif}")
     return result.returncode
 
 
@@ -173,8 +254,9 @@ def run_llm_verifier(run_dir: Path, run_name: str, threads: int) -> int:
         return 1
 
     thread_count = max(1, threads)
+    npx_binary = resolve_npx_binary()
     cmd = [
-        "npx",
+        npx_binary,
         "ts-node",
         "--transpile-only",
         str(script_path),
@@ -196,8 +278,27 @@ def main() -> int:
     runner = prompt_runner()
     language = prompt_language()
     codeql_suite: str | None = None
+    semgrep_configs: list[str] = []
+    default_semgrep_target = Path(__file__).resolve().parent.parent
+    semgrep_target: Path = default_semgrep_target
+    semgrep_jobs: int | None = None
+    semgrep_timeout: int | None = None
+    semgrep_timeout_threshold: int | None = None
+    semgrep_max_target_bytes: int | None = None
+
     if runner == "codeql":
         codeql_suite = prompt_codeql_suite(language)
+    elif runner == "semgrep":
+        semgrep_configs = prompt_semgrep_configs()
+        semgrep_target = prompt_semgrep_target(default_semgrep_target)
+        semgrep_jobs = prompt_optional_int("Semgrep jobs (-j) (blank to use runner default): ")
+        semgrep_timeout = prompt_optional_int("Semgrep timeout seconds (blank to use runner default): ")
+        semgrep_timeout_threshold = prompt_optional_int(
+            "Semgrep timeout-threshold (blank to use runner default): "
+        )
+        semgrep_max_target_bytes = prompt_optional_int(
+            "Semgrep max-target-bytes (blank to use runner default): "
+        )
     threads = prompt_threads()
 
     oss = Path.cwd().parent.name
@@ -212,7 +313,16 @@ def main() -> int:
     if runner == "codeql":
         rc = run_codeql(language, run_dir, run_name, codeql_suite)
     elif runner == "semgrep":
-        rc = run_semgrep(language, run_dir, run_name)
+        rc = run_semgrep(
+            configs=semgrep_configs,
+            target=semgrep_target,
+            run_dir=run_dir,
+            run_name=run_name,
+            jobs=semgrep_jobs,
+            timeout=semgrep_timeout,
+            timeout_threshold=semgrep_timeout_threshold,
+            max_target_bytes=semgrep_max_target_bytes,
+        )
     else:
         print(f"Unknown runner: {runner}")
         return 1

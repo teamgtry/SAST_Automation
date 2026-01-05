@@ -1,0 +1,171 @@
+
+#!/usr/bin/env python3
+"""
+사용 예:
+  python semgrep_runner.py --config p/security-audit --config p/secrets --target .
+  python semgrep_runner.py -c p/ci -c p/secrets --jobs 8 --timeout 30 --timeout-threshold 5
+
+주의:
+- 이 스크립트는 'semgrep' CLI가 PATH에 있어야 실행됩니다.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+
+# =========================
+# ✅ 기본값(나중에 수정할 부분)
+# =========================
+
+# (4) out은 argument로 받지 않고 디폴트로 고정
+# TODO: 너 프로젝트 구조에 맞게 저장 위치를 바꿔도 됨
+DEFAULT_OUT_DIR = Path("./out")  # 예: ./artifacts/semgrep 등으로 변경 가능
+DEFAULT_SARIF_PATH = DEFAULT_OUT_DIR / "semgrep.sarif"
+
+# (3) target default 지정
+# TODO: 기본 스캔 경로를 바꾸고 싶으면 여기만 수정
+DEFAULT_TARGET = "."  # 보통 프로젝트 루트에서 실행하므로 "."이 무난
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Run semgrep scan and save SARIF report (fixed output format)."
+    )
+
+    # (2) config는 여러 개 입력받아야 함
+    p.add_argument(
+        "-c",
+        "--config",
+        action="append",
+        required=True,
+        help=(
+            "Semgrep config (ruleset). Can be specified multiple times. "
+            "Examples: -c p/security-audit -c p/secrets, or -c ./rules"
+        ),
+    )
+
+    # (3) target은 입력받되 default도 지정
+    p.add_argument(
+        "-t",
+        "--target",
+        default=DEFAULT_TARGET,
+        help=(
+            "Scan target path. Default is set in code (DEFAULT_TARGET). "
+            "Change DEFAULT_TARGET in the script if you want a different default."
+        ),
+    )
+
+    # (6) 병렬도 + 리소스 제한만 argument로 받기
+    p.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=8,  # TODO: 기본 병렬도 수정 가능
+        help="Number of parallel jobs (semgrep -j). Default: 8 (change in code if needed).",
+    )
+    p.add_argument(
+        "--timeout",
+        type=int,
+        default=0,  # 0 = no timeout (semgrep semantics)
+        help="Per-rule per-file timeout in seconds. 0 disables timeout. Default: 0.",
+    )
+    p.add_argument(
+        "--timeout-threshold",
+        type=int,
+        default=0,  # 0 = unlimited threshold (semgrep semantics)
+        help="Number of timeouts allowed per file before skipping it. 0 disables threshold. Default: 0.",
+    )
+    p.add_argument(
+        "--max-target-bytes",
+        type=int,
+        default=0,  # 0 = unlimited (semgrep semantics)
+        help="Maximum target file size in bytes. 0 disables the limit. Default: 0.",
+    )
+
+    # 편의: 실행 커맨드 출력 여부
+    p.add_argument(
+        "--print-cmd",
+        action="store_true",
+        help="Print the semgrep command before running it.",
+    )
+
+    return p.parse_args(argv)
+
+
+def ensure_semgrep_exists() -> None:
+    """Fail fast if semgrep is not available."""
+    try:
+        subprocess.run(["semgrep", "--version"], check=True, capture_output=True, text=True)
+    except FileNotFoundError:
+        print("[ERROR] 'semgrep' command not found. Install semgrep and ensure it's on PATH.", file=sys.stderr)
+        sys.exit(127)
+    except subprocess.CalledProcessError as e:
+        print("[ERROR] semgrep exists but failed to run '--version'.", file=sys.stderr)
+        print(e.stderr or str(e), file=sys.stderr)
+        sys.exit(2)
+
+
+def build_semgrep_command(args: argparse.Namespace, sarif_path: Path) -> list[str]:
+    cmd: list[str] = ["semgrep", "scan"]
+
+    # configs (multiple)
+    for c in args.config:
+        cmd += ["--config", c]
+
+    # target path
+    cmd.append(args.target)
+
+    # fixed output: sarif only
+    cmd += ["--sarif", "--sarif-output", str(sarif_path)]
+
+    # performance / resource controls
+    cmd += ["-j", str(args.jobs)]
+    cmd += ["--timeout", str(args.timeout)]
+    cmd += ["--timeout-threshold", str(args.timeout_threshold)]
+    cmd += ["--max-target-bytes", str(args.max_target_bytes)]
+
+    return cmd
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    ensure_semgrep_exists()
+
+    # (1) 저장 경로는 임의로 잡아둠 (나중에 수정)
+    # 결과 폴더 생성
+    DEFAULT_OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    sarif_path = DEFAULT_SARIF_PATH
+
+    cmd = build_semgrep_command(args, sarif_path)
+
+    if args.print_cmd:
+        print("[INFO] Running:", shlex.join(cmd))
+
+    # 실행
+    # 참고: semgrep는 finding이 있어도 기본 exit code가 실패가 아닐 수 있음.
+    # 너 파이프라인에서는 LLM verdict로 최종 실패 여부를 결정할 거라서,
+    # 여기서는 semgrep exit code를 그대로 반환만 해둠.
+    try:
+        proc = subprocess.run(cmd, text=True)
+    except KeyboardInterrupt:
+        print("\n[WARN] Interrupted by user.", file=sys.stderr)
+        return 130
+
+    # 결과 파일 존재 체크
+    if sarif_path.exists():
+        print(f"[INFO] SARIF saved to: {sarif_path}")
+    else:
+        print(f"[WARN] SARIF file not found at: {sarif_path}", file=sys.stderr)
+
+    return proc.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
