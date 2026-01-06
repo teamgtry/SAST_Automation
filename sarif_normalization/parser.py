@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 import logging
 
 # Import from local modules
@@ -72,36 +72,42 @@ class SarifParser:
         # Get tool information
         tool_info = run.get("tool", {})
         driver = tool_info.get("driver", {})
-        tool_name = driver.get("name", "unknown").lower()
+        tool_name = driver.get("name", "unknown")
         
         # Get message
         message_obj = result.get("message", {})
         message_text = message_obj.get("text") if isinstance(message_obj, dict) else None
         
+        # Get description
+        description_text = (
+            rule.get("fullDescription", {}).get("text")
+            if rule and isinstance(rule.get("fullDescription"), dict)
+            else None
+        )
+        
+        # For Semgrep OSS, keep only one of description or message
+        is_semgrep_oss = tool_name and "semgrep" in tool_name.lower() and "oss" in tool_name.lower()
+        if is_semgrep_oss:
+            # Prefer description over message, but keep whichever exists
+            if description_text:
+                message_text = None
+            elif message_text:
+                description_text = None
+        
         # Build normalized issue according to schema
         issue: NormalizedIssue = {
-            "issue_id": f"{tool_name}-run{run_index}-{sanitized_rule_id}-{result_index}",
+            "issue_id": f"{tool_name.lower()}-run{run_index}-{sanitized_rule_id}-{result_index}",
             "tool": {
-                "name": driver.get("name"),
-                "version": driver.get("version"),
-                "run_index": run_index,
+                "name": tool_name,
             },
             "rule": {
                 "id": rule_id,
-                "name": rule.get("name") if rule else None,
-                "description": (
-                    rule.get("fullDescription", {}).get("text")
-                    if rule and isinstance(rule.get("fullDescription"), dict)
-                    else None
-                ),
+                "description": description_text,
                 "tags": (
                     rule.get("properties", {}).get("tags")
                     if rule and isinstance(rule.get("properties"), dict)
                     else None
                 ),
-            },
-            "sast": {
-                "severity": result.get("level"),
             },
             "message": message_text,
             "locations": {

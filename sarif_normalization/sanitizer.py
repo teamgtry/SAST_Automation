@@ -11,6 +11,7 @@ FAVICON_REGEX = re.compile(r"(?<![a-z])favicon(?![a-z])")
 DUMMY_REGEX = re.compile(r"(?<![a-z])dummy(?![a-z])")
 MIGRATION_REGEX = re.compile(r"(?<![a-z])migrations?(?![a-z])")
 ALEMBIC_REGEX = re.compile(r"(?<![a-z])alembic(?![a-z])")
+SAST_AUTOMATION_REGEX = re.compile(r"(?<![a-zA-Z_])SAST_Automation(?![a-zA-Z_])", re.IGNORECASE)
 
 BUNDLE_ARTIFACT_REGEX = re.compile(r"bundle[._-][a-z0-9]{5,}", re.IGNORECASE)
 BUNDLE_EXTENSIONS = {".js", ".css", ".map"}
@@ -163,7 +164,7 @@ def _matches_path_drop(uri: str) -> bool:
         if BUNDLE_ARTIFACT_REGEX.search(stem):
             return True
 
-    if _matches_segment_keywords(lowered):
+    if _matches_segment_keywords(path):
         return True
 
     return False
@@ -194,6 +195,8 @@ def _segment_regex_match(segment: str) -> bool:
     if MIGRATION_REGEX.search(segment):
         return True
     if ALEMBIC_REGEX.search(segment):
+        return True
+    if SAST_AUTOMATION_REGEX.search(segment):
         return True
     return False
 
