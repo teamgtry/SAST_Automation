@@ -1,16 +1,3 @@
-#!/usr/bin/env python3
-"""
-Top-level CLI to choose a SAST runner and execute it with basic arguments.
-
-Flow:
-1) Prompt user to select runner (codeql or semgrep).
-2) Prompt for language.
-3) Prompt for runner-specific options (CodeQL suite or Semgrep configs/target/resources).
-4) Prompt for LLM verifier thread count.
-5) Create an output directory at ../<oss>-<runner>-<lang>-<index>.
-6) Invoke the chosen runner script, passing the language (and SARIF/DB paths where known).
-7) Normalize SARIF into JSON and run the LLM verifier (llm_verifier.ts).
-"""
 from __future__ import annotations
 
 import os
@@ -19,34 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-def prompt_runner() -> str:
-    options = {"1": "codeql", "2": "semgrep"}
-    print("Select runner:")
-    print("  1) codeql")
-    print("  2) semgrep")
-    while True:
-        choice = input("> ").strip().lower()
-        if choice in options:
-            return options[choice]
-        if choice in options.values():
-            return choice
-        print("Please enter 1 or 2 (codeql/semgrep).")
-
-
 def prompt_language() -> str:
     while True:
         lang = input("Language (e.g., javascript, python): ").strip()
         if lang:
             return lang
         print("Language is required.")
-
-
-def prompt_codeql_suite(language: str) -> str | None:
-    prompt = f"CodeQL suite/pack (default codeql/{language}-queries): "
-    raw = input(prompt).strip()
-    return raw or None
-
 
 def prompt_semgrep_configs() -> list[str]:
     """Prompt for one or more Semgrep configs (rulesets)."""
@@ -114,13 +79,13 @@ def resolve_npx_binary() -> str:
     return "npx"
 
 
-def allocate_run_dir(oss: str, runner: str, language: str) -> tuple[Path, str, int]:
+def allocate_run_dir(oss: str, language: str) -> tuple[Path, str, int]:
     """
     Find the first available ../<oss>-<runner>-<lang>-<index> directory.
     Returns (run_dir_path, base_name_with_index, index).
     """
     parent = Path.cwd()
-    base_prefix = f"{oss}-{runner}-{language}"
+    base_prefix = f"{oss}-semgrep-{language}"
     index = 0
     while True:
         base_name = f"{base_prefix}-{index}"
@@ -128,35 +93,6 @@ def allocate_run_dir(oss: str, runner: str, language: str) -> tuple[Path, str, i
         if not candidate.exists():
             return candidate, base_name, index
         index += 1
-
-
-def run_codeql(
-    language: str, run_dir: Path, run_name: str, suite: str | None = None
-) -> int:
-    runner_path = Path("sast_runner") / "codeql_runner.py"
-    if not runner_path.exists():
-        print(f"codeql runner not found at {runner_path}")
-        return 1
-
-    sarif_path = run_dir / f"{run_name}.sarif"
-    db_path = run_dir / "codeql-db"
-
-    cmd = [
-        sys.executable,
-        str(runner_path),
-        "--language",
-        language,
-        "--sarif-out",
-        str(sarif_path),
-        "--db-out",
-        str(db_path),
-    ]
-    if suite:
-        cmd.extend(["--suite", suite])
-    print(f"Running CodeQL: {' '.join(cmd)}")
-    result = subprocess.run(cmd)
-    return result.returncode
-
 
 def run_semgrep(
     configs: list[str],
@@ -275,9 +211,8 @@ def run_llm_verifier(run_dir: Path, run_name: str, threads: int) -> int:
 
 
 def main() -> int:
-    runner = prompt_runner()
+    runner = "semgrep"
     language = prompt_language()
-    codeql_suite: str | None = None
     semgrep_configs: list[str] = []
     default_semgrep_target = Path(__file__).resolve().parent.parent
     semgrep_target: Path = default_semgrep_target
@@ -286,23 +221,21 @@ def main() -> int:
     semgrep_timeout_threshold: int | None = None
     semgrep_max_target_bytes: int | None = None
 
-    if runner == "codeql":
-        codeql_suite = prompt_codeql_suite(language)
-    elif runner == "semgrep":
-        semgrep_configs = prompt_semgrep_configs()
-        semgrep_target = prompt_semgrep_target(default_semgrep_target)
-        semgrep_jobs = prompt_optional_int("Semgrep jobs (-j) (blank to use runner default): ")
-        semgrep_timeout = prompt_optional_int("Semgrep timeout seconds (blank to use runner default): ")
-        semgrep_timeout_threshold = prompt_optional_int(
-            "Semgrep timeout-threshold (blank to use runner default): "
-        )
-        semgrep_max_target_bytes = prompt_optional_int(
-            "Semgrep max-target-bytes (blank to use runner default): "
-        )
+
+    semgrep_configs = prompt_semgrep_configs()
+    semgrep_target = prompt_semgrep_target(default_semgrep_target)
+    semgrep_jobs = prompt_optional_int("Semgrep jobs (-j) (blank to use runner default): ")
+    semgrep_timeout = prompt_optional_int("Semgrep timeout seconds (blank to use runner default): ")
+    semgrep_timeout_threshold = prompt_optional_int(
+        "Semgrep timeout-threshold (blank to use runner default): "
+    )
+    semgrep_max_target_bytes = prompt_optional_int(
+        "Semgrep max-target-bytes (blank to use runner default): "
+    )
     threads = prompt_threads()
 
     oss = Path.cwd().parent.name
-    run_dir, run_name, index = allocate_run_dir(oss, runner, language)
+    run_dir, run_name, index = allocate_run_dir(oss, language)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Output directory: {run_dir}")
@@ -310,22 +243,16 @@ def main() -> int:
 
     sarif_path = run_dir / f"{run_name}.sarif"
 
-    if runner == "codeql":
-        rc = run_codeql(language, run_dir, run_name, codeql_suite)
-    elif runner == "semgrep":
-        rc = run_semgrep(
-            configs=semgrep_configs,
-            target=semgrep_target,
-            run_dir=run_dir,
-            run_name=run_name,
-            jobs=semgrep_jobs,
-            timeout=semgrep_timeout,
-            timeout_threshold=semgrep_timeout_threshold,
-            max_target_bytes=semgrep_max_target_bytes,
-        )
-    else:
-        print(f"Unknown runner: {runner}")
-        return 1
+    rc = run_semgrep(
+        configs=semgrep_configs,
+        target=semgrep_target,
+        run_dir=run_dir,
+        run_name=run_name,
+        jobs=semgrep_jobs,
+        timeout=semgrep_timeout,
+        timeout_threshold=semgrep_timeout_threshold,
+        max_target_bytes=semgrep_max_target_bytes,
+    )
 
     if rc != 0:
         return rc
