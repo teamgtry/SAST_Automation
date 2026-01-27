@@ -159,10 +159,5 @@ def main():
 
     Path(args.out).write_text("\n".join(sorted(exclude_ids)) + ("\n" if exclude_ids else ""), encoding="utf-8")
 
-    print(f"[+] total unique rule ids: {total}")
-    print(f"[+] excluded rule ids:     {exc}")
-    print(f"[+] wrote: {args.out}")
-
-
 if __name__ == "__main__":
     main()

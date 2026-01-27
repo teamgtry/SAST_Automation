@@ -1,6 +1,8 @@
 # SAST_Automation
+[Custom Rule](https://github.com/teamgtry/Semgrep_Custom_Ruleset)
 
 
+# 환경설정
 /llm_verifier/.env
 .env 구성해야됨
 ```
@@ -15,3 +17,6 @@ LLM_MODEL={your llm model}
 > npm 11.6.2
 
 pip install -r requirements.txt 로 필요한 python 패키지 한번에 설치
+
+# 실행
+
