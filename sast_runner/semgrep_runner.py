@@ -260,7 +260,7 @@ def main(argv: list[str]) -> int:
         )
           if rc == 0:
               exclude_ids = read_exclude_ids(DEFAULT_EXCLUDE_TXT)
-              print(f"[INFO] Auto-exclude enabled (auto-only). exclude ids: {len(exclude_ids)}")
+              #print(f"[INFO] Auto-exclude enabled (auto-only). exclude ids: {len(exclude_ids)}")
           else:
               print("[WARN] make_exclude_rules.py failed. Fallback to normal scan.", file=sys.stderr)
       else:
