@@ -1,5 +1,5 @@
 # SAST_Automation
-
+[Semgrep Custom Rule]()
 
 /llm_verifier/.env
 .env 구성해야됨
