@@ -175,6 +175,71 @@ def run_generate_json(
     return result.returncode
 
 
+def _rag_index_ready(index_dir: Path) -> bool:
+    required = [
+        index_dir / "chunks.jsonl",
+        index_dir / "bm25.pkl",
+        index_dir / "meta.pkl",
+    ]
+    return all(p.exists() for p in required)
+
+
+def run_repo_rag_build(repo_root: Path, index_dir: Path, run_dir: Path, quiet: bool = True) -> int:
+    script_path = Path(__file__).resolve().parent / "llm_verifier" / "repo_rag_build.py"
+    if not script_path.exists():
+        print(f"repo_rag_build not found at {script_path}")
+        return 1
+
+    if _rag_index_ready(index_dir):
+        if not quiet:
+            print(f"Repo RAG index already exists: {index_dir}")
+        return 0
+
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--repo",
+        str(repo_root),
+        "--out",
+        str(index_dir),
+    ]
+    if not quiet:
+        print(f"Building Repo RAG index: {' '.join(cmd)} (cwd={run_dir})")
+    result = subprocess.run(cmd, cwd=run_dir)
+    return result.returncode
+
+
+def run_llm_verifier(
+    repo_root: Path,
+    issues_path: Path,
+    index_dir: Path,
+    out_dir: Path,
+    run_dir: Path,
+    quiet: bool = True,
+) -> int:
+    script_path = Path(__file__).resolve().parent / "llm_verifier" / "llm_verifier.py"
+    if not script_path.exists():
+        print(f"llm_verifier not found at {script_path}")
+        return 1
+
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--repo",
+        str(repo_root),
+        "--issues",
+        str(issues_path),
+        "--index-dir",
+        str(index_dir),
+        "--out-dir",
+        str(out_dir),
+    ]
+    if not quiet:
+        print(f"Running LLM verifier: {' '.join(cmd)} (cwd={run_dir})")
+    result = subprocess.run(cmd, cwd=run_dir)
+    return result.returncode
+
+
 def main() -> int:
     runner = "semgrep"
     language = prompt_language()
@@ -226,6 +291,25 @@ def main() -> int:
 
     rc = run_generate_json(
         oss, runner, language, index, run_dir, semgrep_target, quiet=True
+    )
+    if rc != 0:
+        return rc
+
+    repo_root = semgrep_target if semgrep_target.is_dir() else semgrep_target.parent
+    rag_index_dir = repo_root / ".rag_index"
+    rc = run_repo_rag_build(repo_root, rag_index_dir, run_dir, quiet=True)
+    if rc != 0:
+        return rc
+
+    issues_path = run_dir / f"{run_name}.sanitized.json"
+    llm_out_dir = run_dir / "llm_verifier"
+    rc = run_llm_verifier(
+        repo_root=repo_root,
+        issues_path=issues_path,
+        index_dir=rag_index_dir,
+        out_dir=llm_out_dir,
+        run_dir=run_dir,
+        quiet=True,
     )
     if rc != 0:
         return rc
