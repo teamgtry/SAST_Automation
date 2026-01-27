@@ -4,3 +4,5 @@ langchain-openai
 langchain-google-genai
 numpy
 sentence-transformers
+requests
+pyyaml
