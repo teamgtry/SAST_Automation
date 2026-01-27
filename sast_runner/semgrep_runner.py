@@ -175,9 +175,9 @@ def build_semgrep_command(args: argparse.Namespace, sarif_path: Path, exclude_id
         cmd += ["--config", c]
 
     # exclude rules(expand)
-     if exclude_ids:
-        for rid in exclude_ids:
-            cmd += ["--exclude-rule", rid]
+    if exclude_ids:
+      for rid in exclude_ids:
+        cmd += ["--exclude-rule", rid]
 
     # target path
     cmd.append(args.target)
