@@ -224,13 +224,13 @@ def main(argv: list[str]) -> int:
               maker_path=DEFAULT_MAKER_PATH,
               out_txt=DEFAULT_EXCLUDE_TXT,
         )
-        if rc == 0:
-            exclude_ids = read_exclude_ids(DEFAULT_EXCLUDE_TXT)
-            print(f"[INFO] Auto-exclude enabled (auto-only). exclude ids: {len(exclude_ids)}")
-        else:
-            print("[WARN] make_exclude_rules.py failed. Fallback to normal scan.", file=sys.stderr)
+          if rc == 0:
+              exclude_ids = read_exclude_ids(DEFAULT_EXCLUDE_TXT)
+              print(f"[INFO] Auto-exclude enabled (auto-only). exclude ids: {len(exclude_ids)}")
+          else:
+              print("[WARN] make_exclude_rules.py failed. Fallback to normal scan.", file=sys.stderr)
       else:
-        print("[WARN] semgrep dryrun(auto) failed. Fallback to normal scan.", file=sys.stderr)
+          print("[WARN] semgrep dryrun(auto) failed. Fallback to normal scan.", file=sys.stderr)
 
     cmd = build_semgrep_command(args, sarif_path, exclude_ids=exclude_ids)
 
