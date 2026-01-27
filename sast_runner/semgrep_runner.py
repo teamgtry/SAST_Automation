@@ -32,6 +32,16 @@ DEFAULT_SARIF_PATH = DEFAULT_OUT_DIR / "semgrep.sarif"
 # TODO: 기본 스캔 경로를 바꾸고 싶으면 여기만 수정
 DEFAULT_TARGET = "."  # 보통 프로젝트 루트에서 실행하므로 "."이 무난
 
+# Auto-exclude artifacts
+DEFAULT_DRYRUN_JSON = DEFAULT_OUT_DIR / "dryrun_auto.json"
+DEFAULT_EXCLUDE_TXT = DEFAULT_OUT_DIR / "exclude_rules.txt"
+
+# Auto-exclude policy/script fixed paths
+RUNNER_DIR = Path(__file__).resolve().parent
+EXCLUDE_DIR = RUNNER_DIR / "semgrep_exclude"
+DEFAULT_POLICY_PATH = EXCLUDE_DIR / "exclude_policy.yml"
+DEFAULT_MAKER_PATH = EXCLUDE_DIR / "make_exclude_rules.py"
+
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -109,14 +119,65 @@ def ensure_semgrep_exists() -> None:
         print("[ERROR] semgrep exists but failed to run '--version'.", file=sys.stderr)
         print(e.stderr or str(e), file=sys.stderr)
         sys.exit(2)
+      
+# exclude_rules_txt 읽기
+def read_exclude_ids(exclude_txt: Path) -> list[str]:
+    if not exclude_txt.exists():
+        return []
+    ids: list[str] = []
+    for line in exclude_txt.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if s and not s.startswith("#"):
+            ids.append(s)
+    # de-dup preserve order
+    seen = set()
+    out = []
+    for rid in ids:
+        if rid not in seen:
+            seen.add(rid)
+            out.append(rid)
+    return out
+
+# dryrun 커맨드 만들기
+def build_semgrep_dryrun_command(args: argparse.Namespace, out_json: Path) -> list[str]:
+    cmd: list[str] = ["semgrep", "scan"]
+    cmd += ["--config", "auto"]
+    cmd.append(args.target)
+    cmd += ["--dryrun", "--json", "--output", str(out_json)]
+    cmd += ["-j", str(args.jobs)]
+    cmd += ["--timeout", str(args.timeout)]
+    cmd += ["--timeout-threshold", str(args.timeout_threshold)]
+    cmd += ["--max-target-bytes", str(args.max_target_bytes)]
+    return cmd
+
+# make_exclude_rules.py
+def run_make_exclude_rules(dryrun_json: Path, policy_path: Path, maker_path: Path, out_txt: Path) -> int:
+    cmd = [
+        "python3",
+        str(maker_path),
+        "--dryrun-json",
+        str(dryrun_json),
+        "--policy",
+        str(policy_path),
+        "--out",
+        str(out_txt),
+    ]
+    proc = subprocess.run(cmd, text=True)
+    return proc.returncode
 
 
-def build_semgrep_command(args: argparse.Namespace, sarif_path: Path) -> list[str]:
+
+def build_semgrep_command(args: argparse.Namespace, sarif_path: Path, exclude_ids: list[str] | None = None) -> list[str]:
     cmd: list[str] = ["semgrep", "scan"]
 
     # configs (multiple)
     for c in args.config:
         cmd += ["--config", c]
+
+    # exclude rules(expand)
+     if exclude_ids:
+        for rid in exclude_ids:
+            cmd += ["--exclude-rule", rid]
 
     # target path
     cmd.append(args.target)
@@ -143,7 +204,35 @@ def main(argv: list[str]) -> int:
 
     sarif_path = DEFAULT_SARIF_PATH
 
-    cmd = build_semgrep_command(args, sarif_path)
+    #Auto-exclude 준비 : dryrun -> exclude_rules.txt
+    exclude_ids: list[str] = []
+
+    auto_in_configs = any(c == "auto" for c in args.config)
+    auto_exclude_possible = auto_in_configs and DEFAULT_POLICY_PATH.exists() and DEFAULT_MAKER_PATH.exists()
+
+    if auto_exclude_possible:
+      dryrun_cmd = build_semgrep_dryrun_auto_only(args, DEFAULT_DRYRUN_JSON)
+      if args.print_cmd:
+        print("[INFO] Running(dryrun-auto-only):", shlex.join(dryrun_cmd))
+
+      proc_dry = subprocess.run(dryrun_cmd, text=True)
+
+      if proc_dry.returncode == 0 and DEFAULT_DRYRUN_JSON.exists():
+          rc = run_make_exclude_rules(
+              dryrun_json=DEFAULT_DRYRUN_JSON,
+              policy_path=DEFAULT_POLICY_PATH,
+              maker_path=DEFAULT_MAKER_PATH,
+              out_txt=DEFAULT_EXCLUDE_TXT,
+        )
+        if rc == 0:
+            exclude_ids = read_exclude_ids(DEFAULT_EXCLUDE_TXT)
+            print(f"[INFO] Auto-exclude enabled (auto-only). exclude ids: {len(exclude_ids)}")
+        else:
+            print("[WARN] make_exclude_rules.py failed. Fallback to normal scan.", file=sys.stderr)
+      else:
+        print("[WARN] semgrep dryrun(auto) failed. Fallback to normal scan.", file=sys.stderr)
+
+    cmd = build_semgrep_command(args, sarif_path, exclude_ids=exclude_ids)
 
     if args.print_cmd:
         print("[INFO] Running:", shlex.join(cmd))
