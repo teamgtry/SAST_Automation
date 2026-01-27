@@ -1,7 +1,7 @@
 # SAST_Automation
 
 
-llm_verifier
+/llm_verifier/.env
 .env 구성해야됨
 ```
 GOOGLE_API_KEY={your gemini key}
