@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -47,36 +46,17 @@ def prompt_optional_int(prompt: str, allow_zero: bool = True) -> int | None:
         print("Please enter a non-negative integer." if allow_zero else "Please enter a positive integer.")
 
 
-def prompt_threads() -> int:
+def prompt_yes_no(prompt: str, default: bool = False) -> bool:
+    suffix = " [Y/n]: " if default else " [y/N]: "
     while True:
-        raw = input("Threads for LLM verifier (default 1): ").strip()
-        if not raw:
-            return 1
-        try:
-            value = int(raw)
-            if value >= 1:
-                return value
-        except ValueError:
-            pass
-        print("Please enter a positive integer for threads.")
-
-
-def is_wsl() -> bool:
-    """Detect if running under WSL to avoid using Windows shims like npx.cmd."""
-    try:
-        return "microsoft" in platform.release().lower()
-    except Exception:
-        return False
-
-
-def resolve_npx_binary() -> str:
-    """
-    Prefer the native npx for the current OS.
-    On Windows -> npx.cmd, otherwise -> npx.
-    """
-    if os.name == "nt" and not is_wsl():
-        return "npx.cmd"
-    return "npx"
+        raw = input(f"{prompt}{suffix}").strip().lower()
+        if raw == "":
+            return default
+        if raw in {"y", "yes"}:
+            return True
+        if raw in {"n", "no"}:
+            return False
+        print("Please enter y or n.")
 
 
 def allocate_run_dir(oss: str, language: str) -> tuple[Path, str, int]:
@@ -99,10 +79,12 @@ def run_semgrep(
     target: Path,
     run_dir: Path,
     run_name: str,
+    pro: bool = False,
     jobs: int | None = None,
     timeout: int | None = None,
     timeout_threshold: int | None = None,
     max_target_bytes: int | None = None,
+    quiet: bool = True,
 ) -> int:
     runner_path = (Path("sast_runner") / "semgrep_runner.py").resolve()
     if not runner_path.exists():
@@ -116,6 +98,10 @@ def run_semgrep(
     for config in configs:
         cmd.extend(["--config", config])
     cmd.extend(["--target", str(target)])
+    if pro:
+        cmd.append("--pro")
+    if quiet:
+        cmd.append("--quiet")
     if jobs is not None:
         cmd.extend(["--jobs", str(jobs)])
     if timeout is not None:
@@ -125,7 +111,8 @@ def run_semgrep(
     if max_target_bytes is not None:
         cmd.extend(["--max-target-bytes", str(max_target_bytes)])
 
-    print(f"Running Semgrep: {' '.join(cmd)} (cwd={run_dir})")
+    if not quiet:
+        print(f"Running Semgrep: {' '.join(cmd)} (cwd={run_dir})")
     result = subprocess.run(cmd, cwd=run_dir)
     if result.returncode != 0:
         return result.returncode
@@ -136,14 +123,22 @@ def run_semgrep(
         except OSError as exc:  # pragma: no cover - simple filesystem failure path
             print(f"Failed to move SARIF file: {exc}", file=sys.stderr)
             return 1
-        print(f"SARIF saved to: {sarif_path}")
+        if not quiet:
+            print(f"SARIF saved to: {sarif_path}")
     else:
-        print(f"SARIF file not found at expected location: {runner_default_sarif}")
+        if not quiet:
+            print(f"SARIF file not found at expected location: {runner_default_sarif}")
     return result.returncode
 
 
 def run_generate_json(
-    oss: str, runner: str, language: str, index: int, run_dir: Path
+    oss: str,
+    runner: str,
+    language: str,
+    index: int,
+    run_dir: Path,
+    source_root: Path,
+    quiet: bool = True,
 ) -> int:
     project_root = Path(__file__).resolve().parent
     script_path = project_root / "sarif_normalization" / "generate_json.py"
@@ -169,44 +164,14 @@ def run_generate_json(
         language,
         "--index",
         str(index),
+        "--source-root",
+        str(source_root),
     ]
-    print(f"Generating normalized JSON: {' '.join(cmd)} (cwd={run_dir})")
+    if quiet:
+        cmd.append("--quiet")
+    else:
+        print(f"Generating normalized JSON: {' '.join(cmd)} (cwd={run_dir})")
     result = subprocess.run(cmd, cwd=run_dir, env=env)
-    return result.returncode
-
-
-def run_llm_verifier(run_dir: Path, run_name: str, threads: int) -> int:
-    project_root = Path(__file__).resolve().parent
-    repo_root = project_root.parent
-    script_path = project_root / "llm_verifier" / "llm_verifier.ts"
-    issues_path = run_dir / f"{run_name}.sanitized.json"
-
-    if not script_path.exists():
-        print(f"llm_verifier script not found at {script_path}")
-        return 1
-
-    if not issues_path.exists():
-        print(f"Normalized issues JSON not found: {issues_path}")
-        return 1
-
-    thread_count = max(1, threads)
-    npx_binary = resolve_npx_binary()
-    cmd = [
-        npx_binary,
-        "ts-node",
-        "--transpile-only",
-        str(script_path),
-        "--repo",
-        str(repo_root),
-        "--issues",
-        str(issues_path),
-        "--out-dir",
-        str(run_dir),
-        "--threads",
-        str(thread_count),
-    ]
-    print(f"Running llm_verifier: {' '.join(cmd)} (cwd={project_root})")
-    result = subprocess.run(cmd, cwd=project_root)
     return result.returncode
 
 
@@ -220,6 +185,7 @@ def main() -> int:
     semgrep_timeout: int | None = None
     semgrep_timeout_threshold: int | None = None
     semgrep_max_target_bytes: int | None = None
+    semgrep_pro: bool = False
 
 
     semgrep_configs = prompt_semgrep_configs()
@@ -232,14 +198,10 @@ def main() -> int:
     semgrep_max_target_bytes = prompt_optional_int(
         "Semgrep max-target-bytes (blank to use runner default): "
     )
-    threads = prompt_threads()
-
+    semgrep_pro = prompt_yes_no("Use Semgrep Pro engine?", default=False)
     oss = Path.cwd().parent.name
     run_dir, run_name, index = allocate_run_dir(oss, language)
     run_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"Output directory: {run_dir}")
-    print(f"Base name: {run_name} (for SARIF/JSON artifacts)")
 
     sarif_path = run_dir / f"{run_name}.sarif"
 
@@ -248,6 +210,7 @@ def main() -> int:
         target=semgrep_target,
         run_dir=run_dir,
         run_name=run_name,
+        pro=semgrep_pro,
         jobs=semgrep_jobs,
         timeout=semgrep_timeout,
         timeout_threshold=semgrep_timeout_threshold,
@@ -261,11 +224,12 @@ def main() -> int:
         print(f"SARIF file not found: {sarif_path}")
         return 1
 
-    rc = run_generate_json(oss, runner, language, index, run_dir)
+    rc = run_generate_json(
+        oss, runner, language, index, run_dir, semgrep_target, quiet=True
+    )
     if rc != 0:
         return rc
-
-    return run_llm_verifier(run_dir, run_name, threads)
+    return 0
 
 
 if __name__ == "__main__":
