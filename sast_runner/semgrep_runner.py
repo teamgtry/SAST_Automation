@@ -38,7 +38,7 @@ DEFAULT_EXCLUDE_TXT = DEFAULT_OUT_DIR / "exclude_rules.txt"
 
 # Auto-exclude policy/script fixed paths
 RUNNER_DIR = Path(__file__).resolve().parent
-EXCLUDE_DIR = RUNNER_DIR / "semgrep_exclude"
+EXCLUDE_DIR = RUNNER_DIR / "exclude_rules"
 DEFAULT_POLICY_PATH = EXCLUDE_DIR / "exclude_policy.yml"
 DEFAULT_MAKER_PATH = EXCLUDE_DIR / "make_exclude_rules.py"
 
