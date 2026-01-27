@@ -164,7 +164,7 @@ def read_exclude_ids(exclude_txt: Path) -> list[str]:
 
 # dryrun 커맨드 만들기
 def build_semgrep_dryrun_command(args: argparse.Namespace, out_json: Path) -> list[str]:
-    cmd: list[str] = ["semgrep", "scan"]
+    cmd: list[str] = ["semgrep", "scan", "--oss-only"]
     cmd += ["--config", "auto"]
     cmd.append(args.target)
     cmd += ["--dryrun", "--json", "--output", str(out_json)]
