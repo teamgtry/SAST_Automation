@@ -315,6 +315,5 @@ def main() -> int:
         return rc
     return 0
 
-#ㅇ
 if __name__ == "__main__":
     sys.exit(main())
