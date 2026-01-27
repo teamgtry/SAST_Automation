@@ -1,0 +1,36 @@
+# exclude_policy.yml
+version: 2
+
+scope:
+  dryrun_configs:
+    - "auto"
+
+keep:
+  require_any_metadata_keys:
+    - cwe
+    - owasp
+
+exclude:
+  # (기본) audit + confidence=LOW 제외
+  audit_low_only: true
+
+  # ✅ (추가) audit + (likelihood=LOW OR impact=LOW) 제외
+  audit_low_likelihood_or_impact: true
+
+  # crypto 계열 제외 (유지)
+  vulnerability_class_any_in:
+    - "Cryptographic Issues"
+
+  # (선택) 품질/스타일 카테고리 제거
+  category_in_optional:
+    - "best-practice"
+    - "maintainability"
+    - "style"
+    - "lint"
+    - "formatting"
+
+decision:
+  exclude_overrides_keep: true
+
+safety:
+  max_exclude_ratio: 0.85
