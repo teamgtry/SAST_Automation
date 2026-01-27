@@ -1,0 +1,6 @@
+langgraph
+langchain-core
+langchain-openai
+langchain-google-genai
+numpy
+sentence-transformers

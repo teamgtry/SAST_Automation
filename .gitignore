@@ -1,2 +1,3 @@
 __pycache__/
 *.pyc
+llm_verifier/.env
