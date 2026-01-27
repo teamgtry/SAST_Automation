@@ -31,6 +31,7 @@ DEFAULT_SARIF_PATH = DEFAULT_OUT_DIR / "semgrep.sarif"
 # (3) target default 지정
 # TODO: 기본 스캔 경로를 바꾸고 싶으면 여기만 수정
 DEFAULT_TARGET = "."  # 보통 프로젝트 루트에서 실행하므로 "."이 무난
+DEFAULT_PREDROP_IGNORE = Path(__file__).resolve().parent / "pre-drop.ignore"
 
 # Auto-exclude artifacts
 DEFAULT_DRYRUN_JSON = DEFAULT_OUT_DIR / "dryrun_auto.json"
@@ -97,12 +98,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0,  # 0 = unlimited (semgrep semantics)
         help="Maximum target file size in bytes. 0 disables the limit. Default: 0.",
     )
+    p.add_argument(
+        "--pro",
+        action="store_true",
+        help="Use the Semgrep Pro engine (requires Semgrep Pro auth).",
+    )
 
     # 편의: 실행 커맨드 출력 여부
     p.add_argument(
         "--print-cmd",
         action="store_true",
         help="Print the semgrep command before running it.",
+    )
+    p.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress semgrep stdout/stderr (still writes SARIF file).",
     )
 
     return p.parse_args(argv)
@@ -119,6 +130,19 @@ def ensure_semgrep_exists() -> None:
         print("[ERROR] semgrep exists but failed to run '--version'.", file=sys.stderr)
         print(e.stderr or str(e), file=sys.stderr)
         sys.exit(2)
+
+
+def load_predrop_patterns(ignore_path: Path) -> list[str]:
+    if not ignore_path.exists():
+        return []
+
+    patterns: list[str] = []
+    for raw in ignore_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
       
 # exclude_rules_txt 읽기
 def read_exclude_ids(exclude_txt: Path) -> list[str]:
@@ -149,6 +173,10 @@ def build_semgrep_dryrun_command(args: argparse.Namespace, out_json: Path) -> li
     cmd += ["--timeout-threshold", str(args.timeout_threshold)]
     cmd += ["--max-target-bytes", str(args.max_target_bytes)]
     return cmd
+
+
+def build_semgrep_dryrun_auto_only(args: argparse.Namespace, out_json: Path) -> list[str]:
+    return build_semgrep_dryrun_command(args, out_json)
 
 # make_exclude_rules.py
 def run_make_exclude_rules(dryrun_json: Path, policy_path: Path, maker_path: Path, out_txt: Path) -> int:
@@ -185,11 +213,17 @@ def build_semgrep_command(args: argparse.Namespace, sarif_path: Path, exclude_id
     # fixed output: sarif only
     cmd += ["--sarif", "--sarif-output", str(sarif_path)]
 
+    # pre-drop excludes
+    for pattern in load_predrop_patterns(DEFAULT_PREDROP_IGNORE):
+        cmd += ["--exclude", pattern]
+
     # performance / resource controls
     cmd += ["-j", str(args.jobs)]
     cmd += ["--timeout", str(args.timeout)]
     cmd += ["--timeout-threshold", str(args.timeout_threshold)]
     cmd += ["--max-target-bytes", str(args.max_target_bytes)]
+    if args.pro:
+        cmd.append("--pro")
 
     return cmd
 
@@ -212,7 +246,7 @@ def main(argv: list[str]) -> int:
 
     if auto_exclude_possible:
       dryrun_cmd = build_semgrep_dryrun_auto_only(args, DEFAULT_DRYRUN_JSON)
-      if args.print_cmd:
+      if args.print_cmd and not args.quiet:
         print("[INFO] Running(dryrun-auto-only):", shlex.join(dryrun_cmd))
 
       proc_dry = subprocess.run(dryrun_cmd, text=True)
@@ -234,7 +268,7 @@ def main(argv: list[str]) -> int:
 
     cmd = build_semgrep_command(args, sarif_path, exclude_ids=exclude_ids)
 
-    if args.print_cmd:
+    if args.print_cmd and not args.quiet:
         print("[INFO] Running:", shlex.join(cmd))
 
     # 실행
@@ -242,16 +276,22 @@ def main(argv: list[str]) -> int:
     # 너 파이프라인에서는 LLM verdict로 최종 실패 여부를 결정할 거라서,
     # 여기서는 semgrep exit code를 그대로 반환만 해둠.
     try:
-        proc = subprocess.run(cmd, text=True)
+        if args.quiet:
+            proc = subprocess.run(
+                cmd, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        else:
+            proc = subprocess.run(cmd, text=True)
     except KeyboardInterrupt:
         print("\n[WARN] Interrupted by user.", file=sys.stderr)
         return 130
 
     # 결과 파일 존재 체크
-    if sarif_path.exists():
-        print(f"[INFO] SARIF saved to: {sarif_path}")
-    else:
-        print(f"[WARN] SARIF file not found at: {sarif_path}", file=sys.stderr)
+    if not args.quiet:
+        if sarif_path.exists():
+            print(f"[INFO] SARIF saved to: {sarif_path}")
+        else:
+            print(f"[WARN] SARIF file not found at: {sarif_path}", file=sys.stderr)
 
     return proc.returncode
 
