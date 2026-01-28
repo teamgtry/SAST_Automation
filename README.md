@@ -18,6 +18,7 @@ LLM_MODEL={your llm model}
 
 - semgrep<br>
   ※ pro 사용 시 사전에 pro 엔진 활성화 및 로그인 해야함<br>
+
 pip install -r requirements.txt 로 필요한 python 패키지 한번에 설치
 (에러 시 python3 -m pip install --break-system-packages -r requirements.txt로 실행)
 
