@@ -7,6 +7,7 @@ import os
 import sys
 import re
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
@@ -76,7 +77,11 @@ class LangChainGeminiClient(LLMClient):
             raise RuntimeError("langchain_google_genai or langchain_core not installed") from exc
         self._HumanMessage = HumanMessage
         self._SystemMessage = SystemMessage
-        self._client = ChatGoogleGenerativeAI(model=model, temperature=temperature)
+        self._client = ChatGoogleGenerativeAI(
+            model=model,
+            temperature=temperature,
+            response_mime_type="application/json",
+        )
         self._system_prompt = system_prompt
 
     def complete(self, prompt: str) -> str:
@@ -84,8 +89,20 @@ class LangChainGeminiClient(LLMClient):
         if self._system_prompt:
             messages.append(self._SystemMessage(content=self._system_prompt))
         messages.append(self._HumanMessage(content=prompt))
-        response = self._client.invoke(messages)
-        return getattr(response, "content", "") or ""
+        last_exc: Optional[BaseException] = None
+        for attempt in range(3):
+            try:
+                response = self._client.invoke(messages)
+                return getattr(response, "content", "") or ""
+            except Exception as exc:  # pragma: no cover - runtime dependency
+                last_exc = exc
+                if not is_overloaded_error(exc):
+                    raise
+                if attempt < 2:
+                    time.sleep(1.5 * (2 ** attempt))
+                    continue
+                raise OverloadedError("Gemini model overloaded after retries") from exc
+        raise OverloadedError("Gemini model overloaded after retries") from last_exc
 
 
 class MockLLMClient(LLMClient):
@@ -182,10 +199,18 @@ def extract_json(text: str) -> Dict[str, Any]:
         return json.loads(text)
     except json.JSONDecodeError:
         print("[extract_json] JSON decode failed on full text.", file=sys.stderr)
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
+    codeblock_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    if codeblock_match:
         try:
-            return json.loads(match.group(0))
+            return json.loads(codeblock_match.group(1))
+        except json.JSONDecodeError:
+            print("[extract_json] JSON decode failed on codeblock.", file=sys.stderr)
+            return {}
+    first = text.find("{")
+    last = text.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        try:
+            return json.loads(text[first : last + 1])
         except json.JSONDecodeError:
             print("[extract_json] JSON decode failed on extracted block.", file=sys.stderr)
             return {}
@@ -425,6 +450,26 @@ def ensure_evidence(answers: List[Answer]) -> List[Answer]:
         else:
             cleaned.append(ans)
     return cleaned
+
+
+class OverloadedError(RuntimeError):
+    pass
+
+
+def is_overloaded_error(exc: BaseException) -> bool:
+    try:
+        from google.genai.errors import ServerError  # type: ignore
+        if isinstance(exc, ServerError):
+            status_code = getattr(exc, "status_code", None)
+            if status_code == 503:
+                return True
+    except Exception:
+        pass
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 503:
+        return True
+    text = str(exc)
+    return "503" in text and ("overloaded" in text.lower() or "UNAVAILABLE" in text)
 
 
 def build_graph(llm: Dict[str, LLMClient], rag: Any, config: Dict[str, Any]) -> Any:
@@ -670,8 +715,10 @@ def main() -> int:
 
     dropped: List[Dict[str, Any]] = []
     kept: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
     dropped_lock = threading.Lock()
     kept_lock = threading.Lock()
+    skipped_lock = threading.Lock()
 
     def worker(case: Dict[str, Any]) -> None:
         case_input = build_case_input(repo_root, case)
@@ -688,7 +735,18 @@ def main() -> int:
             "logger": logger,
             "cache": cache,
         }
-        final_state = graph.invoke(state)
+        try:
+            final_state = graph.invoke(state)
+        except OverloadedError as exc:
+            print(f"[warn] skipped case {case_id}: {exc}", file=sys.stderr)
+            with skipped_lock:
+                skipped.append({
+                    "case_id": case_id,
+                    "rule_id": case_input.get("rule_id"),
+                    "file": case_input.get("file_path"),
+                    "reason": "model_overloaded",
+                })
+            return
         summary = summarize_case(final_state)
         decision = summary.get("final", {}).get("decision")
         if decision == "drop_fp":
@@ -713,11 +771,14 @@ def main() -> int:
 
     drop_path = out_dir / "llm_verified_drop_fp.json"
     keep_path = out_dir / "llm_verified_keep.json"
+    skip_path = out_dir / "llm_verified_skipped.json"
     drop_path.write_text(json.dumps(dropped, ensure_ascii=True, indent=2), encoding="utf-8")
     keep_path.write_text(json.dumps(kept, ensure_ascii=True, indent=2), encoding="utf-8")
+    skip_path.write_text(json.dumps(skipped, ensure_ascii=True, indent=2), encoding="utf-8")
 
     print(f"[done] drop_fp: {drop_path}")
     print(f"[done] keep: {keep_path}")
+    print(f"[done] skipped: {skip_path}")
     return 0
 
 

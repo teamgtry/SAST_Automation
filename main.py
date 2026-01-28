@@ -240,7 +240,33 @@ def run_llm_verifier(
     return result.returncode
 
 
+def _default_hf_cache_dir() -> Path:
+    return Path(__file__).resolve().parent / ".hf_cache"
+
+
+def _hf_model_cached(cache_dir: Path, model_repo: str) -> bool:
+    repo_dir = cache_dir / "hub" / f"models--{model_repo.replace('/', '--')}"
+    snapshots = repo_dir / "snapshots"
+    return snapshots.exists() and any(snapshots.iterdir())
+
+
+def ensure_hf_model_cache(model_repo: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
+    cache_dir = _default_hf_cache_dir()
+    os.environ["HF_HOME"] = str(cache_dir)
+    if _hf_model_cached(cache_dir, model_repo):
+        return
+    script_path = Path(__file__).resolve().parent / "prepare_models.py"
+    if not script_path.exists():
+        print(f"[WARN] prepare_models.py not found at {script_path}; continuing without cache.")
+        return
+    cmd = [sys.executable, str(script_path), "--cache-dir", str(cache_dir), "--model", model_repo]
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("[WARN] model pre-download failed; continuing without cache.")
+
+
 def main() -> int:
+    ensure_hf_model_cache()
     runner = "semgrep"
     language = prompt_language()
     semgrep_configs: list[str] = []

@@ -11,8 +11,10 @@ Usage (from your llm_verifier):
 from __future__ import annotations
 
 import json
+import os
 import pickle
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -156,12 +158,27 @@ class RepoRAG:
         if self.embeddings is None:
             raise RuntimeError("No embeddings loaded. Rebuild index without --no-embeddings.")
 
+        cache_dir = Path(__file__).resolve().parent.parent / ".hf_cache"
+        os.environ.setdefault("HF_HOME", str(cache_dir))
+        os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "60")
+        os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "20")
+
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as e:
             raise RuntimeError("sentence-transformers not installed. pip install sentence-transformers") from e
 
-        model = SentenceTransformer(model_name)
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                model = SentenceTransformer(model_name)
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < 2:
+                    time.sleep(2.0 * (2 ** attempt))
+                    continue
+                raise
         q = model.encode([query], normalize_embeddings=True)
         return np.asarray(q[0], dtype=np.float32)
 
