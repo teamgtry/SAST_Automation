@@ -17,6 +17,7 @@ LLM_MODEL={your llm model}
 > npm 11.6.2
 
 pip install -r requirements.txt 로 필요한 python 패키지 한번에 설치
+(에러 시 python3 -m pip install --break-system-packages -r requirements.txt로 실행)
 
 # 실행
 
