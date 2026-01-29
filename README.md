@@ -41,7 +41,7 @@ RAG 임베딩 모델을 미리 내려받아 속도/안정성을 높일 수 있�
 ```bash
 python prepare_models.py --cache-dir ./.hf_cache --model sentence-transformers/all-MiniLM-L6-v2
 ```
-`main.py`는 실행 시 자동으로 `.hf_cache`를 확인하고, 없으면 `prepare_models.py`를 호출합니다.
+미리 받지 않더라도 `main.py` 실행 시 자동으로 `.hf_cache`를 확인하고, 없으면 `prepare_models.py`를 호출합니다.
 
 ## 실행 방법
 ```bash
