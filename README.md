@@ -1,3 +1,4 @@
+[Custom Rule](https://github.com/teamgtry/Semgrep_Custom_Ruleset)
 # SAST_Automation
 
 SAST(Semgrep) 실행 결과를 표준 JSON으로 정규화하고, Repo RAG + LLM 검증을 통해 False Positive 후보를 분류하는 자동화 파이프라인입니다.
