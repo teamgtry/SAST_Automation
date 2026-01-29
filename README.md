@@ -16,7 +16,7 @@ SAST(Semgrep) 실행 결과를 표준 JSON으로 정규화하고, Repo RAG + LLM
 
 ## 환경설정
 ### 권장 버전
-- Python 3.12 (3.12 이상에서는 동작하지 않음)
+- Python 3.12 (3.12 이후 버전에서는 동작하지 않음)
 - node v24.12.0
 - npm 11.6.2
 - semgrep 1.146.0
@@ -61,7 +61,7 @@ python main.py
   <run_name>.sanitized.json
   llm_verifier/
     llm_verified_drop_fp.json
-    llm_verified_keep.json
+    llm_verified_keep.json -> 주 결과물
     llm_verified_skipped.json
     logs/
     sessions/
@@ -87,8 +87,7 @@ SAST_Automation/
     semgrep_runner.py          # Semgrep 실행 래퍼(SARIF 출력 고정)
     pre-drop.ignore            # Semgrep pre-drop 패턴
     exclude_rules/             # auto rules 제외 정책
-  .github/workflows/semgrep.yml
-  .hf_cache/                   # HF 캐시(로컬)
+  .hf_cache/                   # HF 캐시(로컬) -> 최초 실행시 자동 생성
 ```
 
 ## 참고 사항
