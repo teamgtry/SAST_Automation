@@ -77,24 +77,28 @@ def impact_is_low(md: dict) -> bool:
 
 
 def should_exclude(md: dict, policy: dict) -> bool:
+    # 1) audit 룰인데 metadata가 비어있으면 제외하지 않음
+    if is_audit(md) and not md:
+        return False
+    
     ex = policy.get("exclude", {}) or {}
 
-    # 1) audit + confidence LOW
+    # 2) audit + confidence LOW
     if ex.get("audit_low_only", False):
         if is_audit(md) and confidence_is_low(md):
             return True
 
-    # 1-b) audit + (likelihood LOW OR impact LOW)
+    # 2-1) audit + (likelihood LOW OR impact LOW)
     if ex.get("audit_low_likelihood_or_impact", False):
         if is_audit(md) and (likelihood_is_low(md) or impact_is_low(md)):
             return True
 
-    # 2) crypto (vulnerability_class is a list in your output)
+    # 3) crypto (vulnerability_class is a list in your output)
     vc_any = ex.get("vulnerability_class_any_in", []) or []
     if vc_any and md_list_any_in(md, "vulnerability_class", vc_any):
         return True
 
-    # 3) optional categories (some rules may have category != security)
+    # 4) optional categories (some rules may have category != security)
     cat_opt = ex.get("category_in_optional", []) or []
     if cat_opt:
         cat = md.get("category")
