@@ -349,7 +349,7 @@ def build_case_input(repo_root: Path, issue: Dict[str, Any]) -> Dict[str, Any]:
 def build_draft_prompt(state: CaseState) -> str:
     return (
         "Node: draft_fp_filter\n"
-        "You are a conservative SAST verifier.\n"
+        "You are a pragmatic SAST verifier.\n"
         "Input fields:\n"
         f"- rule_id: {state.get('rule_id')}\n"
         f"- file: {state.get('file_path')}\n"
@@ -357,9 +357,9 @@ def build_draft_prompt(state: CaseState) -> str:
         "Return JSON only:\n"
         "{\n"
         '  "decision": "drop_candidate" | "keep",\n'
-        '  "reason": "why this is a drop candidate; if unclear, choose keep"\n'
+        '  "reason": "why this is a drop candidate; if unsure, lean drop_candidate when patterns indicate likely FP"\n'
         "}\n"
-        "Do NOT assert drop; only drop_candidate if high-likelihood FP."
+        "Do NOT assert drop; use drop_candidate when there are reasonable indicators of FP."
     )
 
 
@@ -572,7 +572,8 @@ def build_graph(llm: Dict[str, LLMClient], rag: Any, config: Dict[str, Any]) -> 
         tags = set(final.get("fp_tags") or [])
         strong_tags = {"non_user_controlled", "safe_sink", "unreachable_prod"}
         confidence = float(final.get("drop_confidence") or 0.0)
-        if len(evidence) < 2 or not (tags & strong_tags) or confidence < config["confidence_threshold"]:
+        # Relaxed gate: allow drop with a single evidence or strong tag, as long as confidence meets threshold.
+        if (len(evidence) < 1 and not (tags & strong_tags)) or confidence < config["confidence_threshold"]:
             final = {
                 "decision": "keep",
                 "drop_confidence": confidence,
