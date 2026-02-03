@@ -77,8 +77,8 @@ def impact_is_low(md: dict) -> bool:
 
 
 def should_exclude(md: dict, policy: dict) -> bool:
-    # 1) audit Î£∞Ïù∏Îç∞ metadataÍ∞Ä ÎπÑÏñ¥ÏûàÏúºÎ©¥ Ï†úÏô∏ÌïòÏßÄ ÏïäÏùå
-    if is_audit(md) and not md:
+    # 1) metadata∞° ∫ÒæÓ¿÷¿∏∏È æÓ∂≤ ∫–∑˘µµ ∆«∫∞ ∫“∞° -> ¡¶ø‹«œ¡ˆ æ ¿Ω
+    if not md:
         return False
     
     ex = policy.get("exclude", {}) or {}
@@ -165,3 +165,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
