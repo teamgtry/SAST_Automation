@@ -26,6 +26,7 @@ SAST(Semgrep) 실행 결과를 표준 JSON으로 정규화하고, Repo RAG + LLM
 - Semgrep CLI (PATH에 등록되어 있어야 함)
 - Python 패키지 설치
   ```bash
+  # wsl 환경일 경우 --break-system-packages 옵션 필요
   pip install -r requirements.txt
   ```
 
